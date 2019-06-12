@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -10,9 +9,16 @@
         <input type="file" v-on:change="onFileChange">
         <br>
         <img v-show="uploadedImage" :src="uploadedImage">
+        <br>
+        <ul v-show="end_calc">
+            <li v-for="data in results">
+                <{ data[0] }>, <{ data[1] }>
+            </li>
+        </ul>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/onnxjs/dist/onnx.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <script>
         function argsort(array) {
             const arrayObject = array.map((value, idx) => { return { value, idx }; });
@@ -28,55 +34,85 @@
             const argIndices = arrayObject.map(data => data.idx);
             return argIndices;
         }
+        function softmax(arr) {
+            const C = Math.max(...arr);
+            const d = arr.map((y) => Math.exp(y - C)).reduce((a, b) => a + b);
+            return arr.map((value, index) => { 
+                return Math.exp(value - C) / d;
+            })
+        }
 
-        const session = new onnx.InferenceSession();
+        // load onnx data
+        const session = new onnx.InferenceSession({backendHint: "cpu"});
         session.loadModel("/static/mobilenetv2-1.0.onnx");
+
+
         new Vue({
             el: "#app",
             data: {
                 uploadedImage: "",
-                input: ""
+                synset: "",
+                results: [],
+                end_calc: false,
+            },
+            delimiters: ["<{", "}>"],
+            /*watch: {
+                proba5: function(newValue, oldValue){
+                    console.log("change");
+                    console.log(this.proba5);
+                    this.message = "called";
+                }
+            },*/
+            mounted() {
+                axios.get("/static/synset.json").then(response => (this.synset = response.data));
             },
             methods: {
                 onFileChange(e){
                     let files = e.target.files || e.dataTransfer.files;
                     this.createImage(files[0]);
                 },
-                loadImage(image){
-                    let canvas = document.createElement("canvas");
-                    let context = canvas.getContext("2d");
-                    let img = new Image;
-                    img.src = image;
-                    context.drawImage(img, 0, 0, img.width, img.height);
-                    let imgData = new Float32Array(context.getImageData(0, 0, img.width, img.height).data);
-                    let input = new Float32Array(img.width * img.height * 3).fill(1.0);
-                    let count = 0;
-                    for (i=0; i<imgData.length; i+=4){
-                        input[count] = (imgData[i] - 126.0)/126.0;
-                        count += 1;
-                        input[count] = (imgData[i+1] - 126.0)/126.0;
-                        count += 1;
-                        input[count] = (imgData[i+2] - 126.0)/126.0;
-                        count += 1;
-                    }
-                    input = [new Tensor(input, "float32", [1, 3, img.width, img.height])];
-                    return input;
-                },
                 createImage(file){
                     let reader = new FileReader();
                     reader.onload = (e) => {
                         this.uploadedImage = e.target.result;
-                        input = this.loadImage(this.uploadedImage);
-                        //console.log(input);
-                        session.run(input).then(output => {
-                            //console.log(output);
-                            const outputTensor = output.values().next().value;
-                            const rank = argsort(Array.prototype.slice.call(outputTensor.data));
-                            for(i=0; i<5; i++){
-                                console.log(rank[i]);        
+                        let canvas = document.createElement("canvas");
+                        let context = canvas.getContext("2d");
+                        let img = new Image;
+                        img.src = this.uploadedImage;
+                        img.onload = (e) => {
+                            context.drawImage(img, 0, 0, img.width, img.height);
+                            let imgData = new Float32Array(context.getImageData(0, 0, img.width, img.height).data);
+                            let input = new Float32Array(img.width * img.height * 3).fill(1.0);
+                            let count = 0
+                            for (i=0; i<imgData.length; i+=4){
+                                input[count] = (imgData[i]/255 - 0.485)/0.229;
+                                count += 1;
                             }
-
-                        });
+                            for (i=0; i<imgData.length; i+=4){
+                                input[count] = (imgData[i+1]/255 - 0.456)/0.224;
+                                count += 1;
+                            }
+                            for (i=0; i<imgData.length; i+=4){
+                                input[count] = (imgData[i+2]/255 - 0.406)/0.225;
+                                count += 1;
+                            }
+                            input = [new Tensor(input, "float32", [1, 3, img.width, img.height])];
+                            session.run(input).then(output => {
+                                const outputTensor = output.values().next().value;
+                                const feature = Array.prototype.slice.call(outputTensor.data);
+                                const proba = softmax(feature);
+                                const rank = argsort(proba).reverse().slice(0, 5);
+                                const results = [];
+                                for(i=0; i<5; i++){
+                                    label0 = this.synset[rank[i]];
+                                    proba0 = proba[rank[i]];
+                                    results.push([label0, proba0]);
+                                }
+                                this.results = results;
+                                this.end_calc = true;
+                                console.log("finish");
+                            });
+                        }
                     };
                     reader.readAsDataURL(file);
                 }
