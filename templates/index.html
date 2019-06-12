@@ -3,121 +3,32 @@
 <head>
     <meta charset="utf-8">
     <title>ONNX</title>
+    <link rel="stylesheet" type="text/css" href="/static/css/style.css">
 </head>
 <body>
     <div id="app">
         <input type="file" v-on:change="onFileChange">
         <br>
-        <img v-show="uploadedImage" :src="uploadedImage">
-        <br>
-        <ul v-show="end_calc">
-            <li v-for="data in results">
-                <{ data[0] }>, <{ data[1] }>
-            </li>
-        </ul>
+        <p v-show="start_calc && !end_calc" v-cloak>
+            calculating...
+        </p>
+        <img v-show="end_calc" :src="uploadedImage" width="300">
+        <table v-show="end_calc" v-cloak>
+            <tr v-for="data in results">
+                <td align="right">
+                    <{ data[1] | probaDecimal }>% : 
+                </td>
+                <td>
+                    <{ data[0] }>
+                </td>
+
+            </tr>
+        </table>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/onnxjs/dist/onnx.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <script>
-        function argsort(array) {
-            const arrayObject = array.map((value, idx) => { return { value, idx }; });
-            arrayObject.sort((a, b) => {
-                if (a.value < b.value) {
-                    return -1;
-                }
-                if (a.value > b.value) {
-                    return 1;
-                }
-                return 0;
-            });
-            const argIndices = arrayObject.map(data => data.idx);
-            return argIndices;
-        }
-        function softmax(arr) {
-            const C = Math.max(...arr);
-            const d = arr.map((y) => Math.exp(y - C)).reduce((a, b) => a + b);
-            return arr.map((value, index) => { 
-                return Math.exp(value - C) / d;
-            })
-        }
-
-        // load onnx data
-        const session = new onnx.InferenceSession({backendHint: "cpu"});
-        session.loadModel("/static/mobilenetv2-1.0.onnx");
-
-
-        new Vue({
-            el: "#app",
-            data: {
-                uploadedImage: "",
-                synset: "",
-                results: [],
-                end_calc: false,
-            },
-            delimiters: ["<{", "}>"],
-            /*watch: {
-                proba5: function(newValue, oldValue){
-                    console.log("change");
-                    console.log(this.proba5);
-                    this.message = "called";
-                }
-            },*/
-            mounted() {
-                axios.get("/static/synset.json").then(response => (this.synset = response.data));
-            },
-            methods: {
-                onFileChange(e){
-                    let files = e.target.files || e.dataTransfer.files;
-                    this.createImage(files[0]);
-                },
-                createImage(file){
-                    let reader = new FileReader();
-                    reader.onload = (e) => {
-                        this.uploadedImage = e.target.result;
-                        let canvas = document.createElement("canvas");
-                        let context = canvas.getContext("2d");
-                        let img = new Image;
-                        img.src = this.uploadedImage;
-                        img.onload = (e) => {
-                            context.drawImage(img, 0, 0, img.width, img.height);
-                            let imgData = new Float32Array(context.getImageData(0, 0, img.width, img.height).data);
-                            let input = new Float32Array(img.width * img.height * 3).fill(1.0);
-                            let count = 0
-                            for (i=0; i<imgData.length; i+=4){
-                                input[count] = (imgData[i]/255 - 0.485)/0.229;
-                                count += 1;
-                            }
-                            for (i=0; i<imgData.length; i+=4){
-                                input[count] = (imgData[i+1]/255 - 0.456)/0.224;
-                                count += 1;
-                            }
-                            for (i=0; i<imgData.length; i+=4){
-                                input[count] = (imgData[i+2]/255 - 0.406)/0.225;
-                                count += 1;
-                            }
-                            input = [new Tensor(input, "float32", [1, 3, img.width, img.height])];
-                            session.run(input).then(output => {
-                                const outputTensor = output.values().next().value;
-                                const feature = Array.prototype.slice.call(outputTensor.data);
-                                const proba = softmax(feature);
-                                const rank = argsort(proba).reverse().slice(0, 5);
-                                const results = [];
-                                for(i=0; i<5; i++){
-                                    label0 = this.synset[rank[i]];
-                                    proba0 = proba[rank[i]];
-                                    results.push([label0, proba0]);
-                                }
-                                this.results = results;
-                                this.end_calc = true;
-                                console.log("finish");
-                            });
-                        }
-                    };
-                    reader.readAsDataURL(file);
-                }
-            },
-        });
+    <script src=/static/js/main.js>
     </script>
 </body>
 </html>
