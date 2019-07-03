@@ -24,7 +24,7 @@ function softmax(arr) {
 
 // load onnx data
 const session = new onnx.InferenceSession({backendHint: "cpu"});
-session.loadModel("/static/mobilenetv2-1.0.onnx");
+session.loadModel("./mobilenetv2-1.0.onnx");
 let width = 224;
 let height = 224;
 
@@ -41,7 +41,7 @@ new Vue({
     delimiters: ["<{", "}>"],
     mounted() {
         // load category data
-        axios.get("/static/synset.json").then(response => (this.synset = response.data));
+        axios.get("./synset.json").then(response => (this.synset = response.data));
     },
     methods: {
         onFileChange(e){
